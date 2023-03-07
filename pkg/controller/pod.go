@@ -577,7 +577,6 @@ func (c *Controller) handleAddPod(key string) error {
 		return err
 	}
 
-	oriPod := pod.DeepCopy()
 	if len(pod.Annotations) == 0 {
 		pod.Annotations = map[string]string{}
 	}
@@ -675,12 +674,13 @@ func (c *Controller) handleAddPod(key string) error {
 		}
 	}
 
-	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	patch, err := util.GenerateMergePatchPayload(cachedPod, pod)
 	if err != nil {
+		klog.Errorf("generate patch for pod %s/%s failed: %v", name, namespace, err)
 		return err
 	}
 	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name,
-		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
@@ -1010,12 +1010,13 @@ func (c *Controller) handleUpdatePod(key string) error {
 
 		pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)] = "true"
 	}
-	patch, err := util.GenerateStrategicMergePatchPayload(oriPod, pod)
+	patch, err := util.GenerateMergePatchPayload(oriPod, pod)
 	if err != nil {
+		klog.Errorf("generate patch for pod %s/%s failed: %v", name, namespace, err)
 		return err
 	}
 	if _, err := c.config.KubeClient.CoreV1().Pods(namespace).Patch(context.Background(), name,
-		types.StrategicMergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
+		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			// Sometimes pod is deleted between kube-ovn configure ovn-nb and patch pod.
 			// Then we need to recycle the resource again.
