@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
+	//"strings"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
@@ -124,11 +124,11 @@ func (c *ovnClient) SetICAutoRoute(enable bool, blackList []string) error {
 	if enable {
 		options["ic-route-adv"] = "true"
 		options["ic-route-learn"] = "true"
-		options["ic-route-blacklist"] = strings.Join(blackList, ",")
+		//options["ic-route-blacklist"] = strings.Join(blackList, ",")
 	} else {
 		delete(options, "ic-route-adv")
 		delete(options, "ic-route-learn")
-		delete(options, "ic-route-blacklist")
+		//delete(options, "ic-route-blacklist")
 	}
 	if reflect.DeepEqual(options, nbGlobal.Options) {
 		nbGlobal.Options = options

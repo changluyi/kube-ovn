@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -253,14 +254,14 @@ func (c *Controller) establishInterConnection(config map[string]string) error {
 		return err
 	}
 
-	subnet, err := c.acquireLrpAddress(util.InterconnectionSwitch)
+	lrpIP, err := c.acquireLrpAddress(util.InterconnectionSwitch)
 	if err != nil {
 		klog.Errorf("failed to acquire lrp address, %v", err)
 		return err
 	}
 
 	lrpName := fmt.Sprintf("%s-ts", config["az-name"])
-	if err := c.ovnClient.CreateLogicalPatchPort(util.InterconnectionSwitch, c.config.ClusterRouter, tsPort, lrpName, subnet, util.GenerateMac(), chassises...); err != nil {
+	if err := c.ovnClient.CreateLogicalPatchPort(util.InterconnectionSwitch, c.config.ClusterRouter, tsPort, lrpName, lrpIP, util.GenerateMac(), chassises...); err != nil {
 		klog.Errorf("failed to create ovn-ic lrp %v", err)
 		return err
 	}
@@ -281,7 +282,17 @@ func (c *Controller) acquireLrpAddress(ts string) (string, error) {
 	}
 
 	for {
-		random := util.GenerateRandomV4IP(cidr)
+		var random string
+		var ips []string
+		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 || util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+			ips = append(ips, util.GenerateRandomV4IP(cidr))
+		}
+
+		if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+			ips = append(ips, util.GenerateRandomV6IP(cidr))
+		}
+
+		random = strings.Join(ips, ",")
 
 		// find a free address
 		if !existAddress.Has(random) {
@@ -299,6 +310,7 @@ func (c *Controller) startOvnIC(icHost, icNbPort, icSbPort string) error {
 		fmt.Sprintf("--ovn-ic-sb-db=%s", genHostAddress(icHost, icSbPort)),
 		fmt.Sprintf("--ovn-northd-nb-db=%s", c.config.OvnNbAddr),
 		fmt.Sprintf("--ovn-northd-sb-db=%s", c.config.OvnSbAddr),
+		fmt.Sprintf("--ovn-ic-log=-vconsole:dbg -vsyslog:dbg -vfile:dbg"),
 		"start_ic")
 	if os.Getenv("ENABLE_SSL") == "true" {
 		cmd = exec.Command("/usr/share/ovn/scripts/ovn-ctl",
@@ -426,6 +438,12 @@ func stripPrefix(policyMatch string) (string, error) {
 }
 
 func (c *Controller) syncOneRouteToPolicy(key, value string) {
+	cidr, err := c.ovnLegacyClient.GetTsSubnet(util.InterconnectionSwitch)
+	if err != nil {
+		klog.Errorf("failed to get ts subnet: %v", err)
+		return
+	}
+
 	lr, err := c.ovnClient.GetLogicalRouter(c.config.ClusterRouter, false)
 	if err != nil {
 		klog.Errorf("logical router does not exist %v at %v", err, time.Now())
@@ -464,9 +482,20 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 		if _, ok := policyMap[lrRoute.IPPrefix]; ok {
 			delete(policyMap, lrRoute.IPPrefix)
 		} else {
-			matchFiled := util.MatchV4Dst + " == " + lrRoute.IPPrefix
-			if err := c.ovnClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
-				klog.Errorf("adding router policy failed %v", err)
+
+			matchFiled := ""
+			if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 || util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+				matchFiled = util.MatchV4Dst + " == " + lrRoute.IPPrefix
+				if err := c.ovnClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
+					klog.Errorf("adding router policy failed %v", err)
+				}
+			}
+
+			if util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 || util.CheckProtocol(cidr) == kubeovnv1.ProtocolDual {
+				matchFiled = util.MatchV6Dst + " == " + lrRoute.IPPrefix
+				if err := c.ovnClient.AddLogicalRouterPolicy(lr.Name, util.OvnICPolicyPriority, matchFiled, ovnnb.LogicalRouterPolicyActionAllow, nil, map[string]string{key: value, "vendor": util.CniTypeName}); err != nil {
+					klog.Errorf("adding router policy failed %v", err)
+				}
 			}
 		}
 	}
