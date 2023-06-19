@@ -31,12 +31,6 @@ RUN cd /usr/src/ && git clone -b branch-22.12 --depth=1 https://github.com/ovn-o
     curl -s https://github.com/kubeovn/ovn/commit/39954085eaf7b968bf8b59b593fc89f95a03a4f1.patch | git apply && \
     # change hash type from dp_hash to hash with field src_ip
     curl -s https://github.com/kubeovn/ovn/commit/daa09e380eec61620d4ee317e3265c44366d1147.patch | git apply && \
-    # set ether dst addr for dnat on logical switch
-    curl -s https://github.com/kubeovn/ovn/commit/ca270f2592d1078323dc5455f1f24857ad1cd407.patch | git apply && \
-    # modify src route priority
-    curl -s https://github.com/kubeovn/ovn/commit/cd31bebd1c15fb8e50107861a9397e672fcbad27.patch | git apply && \
-    # fix reaching resubmit limit in underlay
-    curl -s https://github.com/kubeovn/ovn/commit/993147dd6ab2dd4565379315a6d96ab12f4a294d.patch | git apply && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     curl -s https://github.com/kubeovn/ovn/commit/8af8751cdb55f582c675db921f2526b06fd3d8c0.patch | git apply && \
     # ovn-ic blacklist function not work on ipv6
